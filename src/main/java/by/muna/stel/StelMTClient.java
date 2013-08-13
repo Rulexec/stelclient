@@ -7,6 +7,8 @@ import by.muna.mt.MTClient;
 import by.muna.mt.by.muna.mt.keys.MTAuthKey;
 import by.muna.mt.logging.VerboseMTClientLogger;
 import by.muna.mt.messages.IMTMessageStatusListener;
+import by.muna.mt.tl.MTPing;
+import by.muna.mt.tl.MTPong;
 import by.muna.mt.tl.MTRpcResult;
 import by.muna.stel.messages.IStelListener;
 import by.muna.stel.storage.IStelStorage;
@@ -17,6 +19,7 @@ import by.muna.theatre.Actor;
 import by.muna.theatre.ActorBehavior;
 import by.muna.theatre.exceptions.ActorStoppedException;
 import by.muna.tl.ITypedData;
+import by.muna.tl.TypedData;
 import by.muna.vk.tl.VKTL;
 import by.muna.yasly.SocketThread;
 
@@ -153,11 +156,7 @@ class StelMTClient implements IMTConnectionListener, IMTDataListener {
         if (authKey != null) {
             this.authKeyId = this.mtClient.addAuthKey(new MTAuthKey(authKey));
 
-            try {
-                this.actor.send(new ActorMessage(ActorMessageType.CONNECTED));
-            } catch (ActorStoppedException e) {
-                this.die(true);
-            }
+            this.pingAndConnect();
         } else {
             this.mtClient.generateAuthKey(new IMTAuthKeyListener() {
                 @Override
@@ -172,17 +171,36 @@ class StelMTClient implements IMTConnectionListener, IMTDataListener {
                             new MTAuthKey(authKey)
                         );
 
-                        try {
-                            StelMTClient.this.actor.send(new ActorMessage(ActorMessageType.CONNECTED));
-                        } catch (ActorStoppedException e) {
-                            StelMTClient.this.die(true);
-                        }
+                        StelMTClient.this.pingAndConnect();
                     } else {
                         StelMTClient.this.die(false);
                     }
                 }
             });
         }
+    }
+    private void pingAndConnect() {
+        this.mtClient.send(this.authKeyId, 1,
+            new TypedData(MTPing.CONSTRUCTOR)
+                .setTypedData(MTPing.pingId, 1L),
+            false,
+            new IMTMessageStatusListener() {
+                @Override public void onConstructed(long messageId) {}
+                @Override public void onSent(long messageId) {}
+                @Override public void onDelivered(long messageId) {
+                    try {
+                        StelMTClient.this.actor.send(new ActorMessage(ActorMessageType.CONNECTED));
+                    } catch (ActorStoppedException e) {
+                        StelMTClient.this.die(true);
+                    }
+                }
+
+                @Override
+                public void onConnectionError(long messageId) {
+                    StelMTClient.this.die(false);
+                }
+            }
+        );
     }
 
     public void connect(Iterator<InetSocketAddress> addresses) {
@@ -198,6 +216,8 @@ class StelMTClient implements IMTConnectionListener, IMTDataListener {
 
         if (this.authKeyId == 0) {
             this.createAuthKey();
+        } else {
+            this.pingAndConnect();
         }
     }
 
@@ -328,6 +348,7 @@ class StelMTClient implements IMTConnectionListener, IMTDataListener {
             this.listener.onData(rpcId, body);
 
             break;
+        case MTPong.CONSTRUCTOR_ID: break;
         default:
             throw new RuntimeException("Unknown data type: " + data.toString());
         }

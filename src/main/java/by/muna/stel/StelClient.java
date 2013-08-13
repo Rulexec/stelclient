@@ -399,6 +399,7 @@ public class StelClient implements IStelListener {
             break;
         }
 
+        if (rpcId == -1) return;
         if (rpcCall == null) {
             switch (this.storage.getRpcState(rpcId)) {
             case REPLY_HANDLED:
@@ -410,7 +411,7 @@ public class StelClient implements IStelListener {
             }
         }
 
-        if (consumed || rpcId == -1) return;
+        if (consumed) return;
 
         this.repliedButNotHandled.put(rpcId, data);
 
